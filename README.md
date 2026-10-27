@@ -1,6 +1,6 @@
 # xfce-wslg-toolkit
 
-Xfce em uma janela Xephyr redimensionável sobre o WSLg, com GPU quando disponível, controles de monitor e integração de texto com a área de transferência do Windows. O alvo padrão é 144 Hz; isso **não é garantia de 144 FPS**.
+Xfce em uma janela Xephyr redimensionável sobre o WSLg, com GPU quando disponível, controles de monitor e integração de texto com a área de transferência do Windows.
 
 ![Xfce em uma janela no Windows](docs/screenshots/xfce-wsl.png)
 
