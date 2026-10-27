@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="displays" version="1.0"><property name="AutoEnableProfiles" type="int" value="0"/><property name="Notify" type="int" value="0"/><property name="Default" type="empty"><property name="default" type="string" value="default"><property name="Resolution" type="string" value="1440x900"/></property></property></channel>

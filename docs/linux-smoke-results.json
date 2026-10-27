@@ -1,0 +1,13 @@
+{
+  "isolated_profile_install": true,
+  "fresh_os_install": false,
+  "packages_installed_during_probe": false,
+  "gpu_accelerated": true,
+  "renderer": "D3D12 (NVIDIA GeForce RTX 3060 Laptop GPU)",
+  "refresh_target": "144",
+  "windowed": true,
+  "dynamic_resize": true,
+  "repeated_launch_preserves_geometry": true,
+  "no_duplicate_session": true,
+  "screenshot": "docs/screenshots/clean-profile.png"
+}

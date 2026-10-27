@@ -1,0 +1,14 @@
+#!/bin/bash
+set -euo pipefail
+TOOLKIT_ROOT=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
+# Plain alias calls always use a resizable window, even from an older fullscreen session.
+export XFCE_WSL_FULLSCREEN="$(/usr/bin/python3 "$TOOLKIT_ROOT/lib/common.py" --get fullscreen)"
+export XFCE_WSL_MOVE_MONITOR=0
+export XFCE_WSL_REFRESH_RATE="${XFCE_WSL_REFRESH_RATE:-$(/usr/bin/python3 "$TOOLKIT_ROOT/lib/common.py" --get refresh_rate)}"
+case "${1:-}" in
+ direita) shift; set -- --monitor right "$@";;
+ esquerda) shift; set -- --monitor left "$@";;
+ janela) shift; set -- --windowed "$@";;
+ status) shift; set -- --status "$@";;
+esac
+exec "$TOOLKIT_ROOT/bin/start-xfce-wsl" "$@"

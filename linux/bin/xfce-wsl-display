@@ -1,0 +1,93 @@
+#!/usr/bin/python3
+"""Live Xephyr fullscreen controls; no logout and no hardcoded outputs."""
+import argparse, ctypes as C, ctypes.util, json, os, re, subprocess, time
+from pathlib import Path
+import sys
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"lib"))
+from common import load_config, select_monitor, window_rect
+CFG=load_config()
+p=argparse.ArgumentParser(description=__doc__)
+p.add_argument('--startup',action='store_true')
+p.add_argument('mode',choices=['list','status','left','right','window','toggle','move-left','move-right'])
+a=p.parse_args()
+startup_env=dict(os.environ)
+os.environ['DISPLAY']=CFG['host_display']
+os.environ.pop('XAUTHORITY',None)
+def cmd(*args):return subprocess.check_output(args,text=True).strip()
+monitors=[]
+for line in cmd('xrandr','--listmonitors').splitlines()[1:]:
+ m=re.search(r'\s(\d+)/\d+x(\d+)/\d+([+-]\d+)([+-]\d+)\s+(\S+)\s*$',line)
+ if m:
+  w,h,xx,yy,name=m.groups();monitors.append(dict(name=name,x=int(xx),y=int(yy),width=int(w),height=int(h)))
+monitors.sort(key=lambda m:(m['x'],m['y']))
+if not monitors:raise SystemExit('Nenhum monitor WSLg encontrado.')
+if a.mode=='list':print(json.dumps(monitors,indent=2));raise SystemExit(0)
+record=Path.home()/'.local/state/xfce-wsl/session.json'
+if a.startup:
+ r={'env':startup_env}
+else:
+ if not record.exists():raise SystemExit('Abra primeiro o atalho Xfce Ubuntu WSL.')
+ r=json.loads(record.read_text());os.kill(r['server_pid'],0)
+wins=cmd('xdotool','search','--onlyvisible','--name','^'+re.escape(CFG['window_title'])+'$').splitlines()
+if len(wins)!=1:raise SystemExit('Nao foi possivel identificar uma unica janela Xephyr.')
+wid=int(wins[0])
+x=C.CDLL(ctypes.util.find_library('X11'))
+x.XOpenDisplay.argtypes=[C.c_char_p];x.XOpenDisplay.restype=C.c_void_p
+x.XDefaultRootWindow.argtypes=[C.c_void_p];x.XDefaultRootWindow.restype=C.c_ulong
+x.XInternAtom.argtypes=[C.c_void_p,C.c_char_p,C.c_int];x.XInternAtom.restype=C.c_ulong
+class Data(C.Union):_fields_=[('b',C.c_char*20),('s',C.c_short*10),('l',C.c_long*5)]
+class Message(C.Structure):_fields_=[('type',C.c_int),('serial',C.c_ulong),('send_event',C.c_int),('display',C.c_void_p),('window',C.c_ulong),('message_type',C.c_ulong),('format',C.c_int),('data',Data)]
+class Event(C.Union):_fields_=[('message',Message),('padding',C.c_long*24)]
+x.XSendEvent.argtypes=[C.c_void_p,C.c_ulong,C.c_int,C.c_long,C.POINTER(Event)]
+x.XMoveResizeWindow.argtypes=[C.c_void_p,C.c_ulong,C.c_int,C.c_int,C.c_uint,C.c_uint]
+x.XFlush.argtypes=[C.c_void_p]
+x.XCloseDisplay.argtypes=[C.c_void_p]
+d=x.XOpenDisplay(CFG['host_display'].encode())
+if not d:raise SystemExit('WSLg indisponivel.')
+def atom(name):return x.XInternAtom(d,name.encode(),0)
+def state():return cmd('xprop','-id',str(wid),'_NET_WM_STATE')
+def geometry():
+ raw=cmd('xdotool','getwindowgeometry','--shell',str(wid))
+ return {k:int(v) for k,v in re.findall(r'^(X|Y|WIDTH|HEIGHT)=(-?\d+)$',raw,re.M)}
+def message(action,first,second=None):
+ e=Event();e.message.type=33;e.message.display=d;e.message.window=wid;e.message.message_type=atom('_NET_WM_STATE');e.message.format=32;e.message.data.l[0]=action;e.message.data.l[1]=atom(first);e.message.data.l[2]=atom(second) if second else 0;e.message.data.l[3]=2
+ x.XSendEvent(d,x.XDefaultRootWindow(d),0,(1<<20)|(1<<19),C.byref(e));x.XFlush(d)
+def status():
+ env=dict(os.environ);env.update(r['env'])
+ for attempt in range(30):
+  g=geometry()
+  probe=subprocess.run(['xrandr','--current'],env=env,text=True,capture_output=True)
+  first=probe.stdout.splitlines()[0] if probe.stdout else ''
+  match=re.search(r'current (\d+) x (\d+)',first)
+  if match and tuple(map(int,match.groups()))==(g['WIDTH'],g['HEIGHT']):
+   return dict(window=wid,state=state(),geometry=g,desktop=first,resolution_matches=True)
+  time.sleep(.1)
+ raise SystemExit('A resolucao interna ainda nao acompanha a janela Xephyr.')
+if a.mode=='status':print(json.dumps(status(),indent=2));raise SystemExit(0)
+full='_NET_WM_STATE_FULLSCREEN' in state()
+mode='window' if a.mode=='toggle' and full else ('left' if a.mode=='toggle' else a.mode)
+move_only=mode.startswith('move-')
+save=Path.home()/'.local/state/xfce-wsl/window-geometry.json'
+if mode!='window' and not full:save.write_text(json.dumps(geometry()))
+message(0,'_NET_WM_STATE_FULLSCREEN');message(0,'_NET_WM_STATE_MAXIMIZED_VERT','_NET_WM_STATE_MAXIMIZED_HORZ')
+time.sleep(.7)
+if mode=='window' or move_only:
+ if move_only:g=window_rect(geometry(),select_monitor(monitors,mode.split('-',1)[1]))
+ elif save.exists():g=json.loads(save.read_text())
+ else:
+  m=monitors[-1];g=dict(X=m['x']+80,Y=m['y']+60,WIDTH=min(1440,m['width']-160),HEIGHT=min(900,m['height']-120))
+ x.XMoveResizeWindow(d,wid,g['X'],g['Y'],g['WIDTH'],g['HEIGHT']);x.XFlush(d)
+else:
+ m=monitors[0 if mode=='left' else -1]
+ x.XMoveResizeWindow(d,wid,m['x']+80,m['y']+60,min(1000,m['width']-160),min(700,m['height']-120));x.XFlush(d)
+ time.sleep(.8)
+ message(1,'_NET_WM_STATE_FULLSCREEN')
+time.sleep(1)
+result=status();print(json.dumps(result,indent=2))
+if mode!='window' and not move_only:
+ g=result['geometry']
+ if g!={'X':m['x'],'Y':m['y'],'WIDTH':m['width'],'HEIGHT':m['height']}:
+  raise SystemExit('WSLg nao aplicou o monitor pedido; geometria acima. Nenhuma sessao foi encerrada.')
+else:
+ if '_NET_WM_STATE_FULLSCREEN' in result['state']:raise SystemExit('WSLg nao saiu da tela cheia.')
+x.XCloseDisplay(d)

@@ -1,0 +1,30 @@
+#!/usr/bin/python3
+"""Reapply a visible pointer to the live nested desktop and Xephyr host window."""
+import ctypes as C,ctypes.util,json,os,subprocess
+from pathlib import Path
+import sys,re
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"lib"))
+from common import load_config
+CFG=load_config()
+state=Path.home()/'.local/state/xfce-wsl/session.json'
+r=json.loads(state.read_text());os.kill(r['server_pid'],0)
+env=dict(os.environ);env.update(r['env'])
+subprocess.run(['xsetroot','-cursor_name','left_ptr'],env=env,check=True)
+x=C.CDLL(ctypes.util.find_library('X11'));xc=C.CDLL(ctypes.util.find_library('Xcursor'))
+x.XOpenDisplay.argtypes=[C.c_char_p];x.XOpenDisplay.restype=C.c_void_p
+x.XDefineCursor.argtypes=[C.c_void_p,C.c_ulong,C.c_ulong]
+x.XSync.argtypes=[C.c_void_p,C.c_int];x.XFreeCursor.argtypes=[C.c_void_p,C.c_ulong];x.XCloseDisplay.argtypes=[C.c_void_p]
+xc.XcursorSetTheme.argtypes=[C.c_void_p,C.c_char_p];xc.XcursorSetDefaultSize.argtypes=[C.c_void_p,C.c_int]
+xc.XcursorLibraryLoadCursor.argtypes=[C.c_void_p,C.c_char_p];xc.XcursorLibraryLoadCursor.restype=C.c_ulong
+hostenv=dict(os.environ);hostenv['DISPLAY']=CFG['host_display'];hostenv.pop('XAUTHORITY',None)
+windows=subprocess.check_output(['xdotool','search','--onlyvisible','--name','^'+re.escape(CFG['window_title'])+'$'],env=hostenv,text=True).splitlines()
+assert len(windows)==1,'Cannot identify a unique visible Xephyr window'
+# Host WSLg does not require the nested Xauthority cookie.
+os.environ.pop('XAUTHORITY',None)
+d=x.XOpenDisplay(CFG['host_display'].encode());assert d
+xc.XcursorSetTheme(d,b'Adwaita');xc.XcursorSetDefaultSize(d,24)
+cursor=xc.XcursorLibraryLoadCursor(d,b'left_ptr');assert cursor
+x.XDefineCursor(d,int(windows[0]),cursor);x.XSync(d,0)
+x.XFreeCursor(d,cursor);x.XCloseDisplay(d)
+print('Visible Adwaita cursor reapplied to live Xephyr window',windows[0])
+print('Nested desktop left_ptr reapplied; session not restarted')

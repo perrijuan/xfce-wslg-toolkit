@@ -1,0 +1,35 @@
+#!/bin/bash
+set -euo pipefail
+TOOLKIT_ROOT=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
+export XFCE_WSL_TOOLKIT_ROOT="$TOOLKIT_ROOT"
+cd "$HOME"
+[[ $(id -u) != 0 ]] || { echo 'Abra como usuario normal.'; exit 1; }
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export XFCE_WSL_MONITOR="${XFCE_WSL_MONITOR:-left}"
+export XFCE_WSL_FULLSCREEN="${XFCE_WSL_FULLSCREEN:-$(/usr/bin/python3 "$TOOLKIT_ROOT/lib/common.py" --get fullscreen)}"
+export XFCE_WSL_MOVE_MONITOR="${XFCE_WSL_MOVE_MONITOR:-0}"
+export XFCE_WSL_GPU="${XFCE_WSL_GPU:-auto}"
+export XFCE_WSL_REFRESH_RATE="${XFCE_WSL_REFRESH_RATE:-$(/usr/bin/python3 "$TOOLKIT_ROOT/lib/common.py" --get refresh_rate)}"
+locked=0
+while (($#)); do
+ case "$1" in
+  --locked) locked=1; shift;;
+  --monitor) [[ $# -ge 2 ]] || exit 2; export XFCE_WSL_MONITOR="$2"; export XFCE_WSL_MOVE_MONITOR=1; shift 2;;
+  --windowed) export XFCE_WSL_FULLSCREEN=0; shift;;
+  --software) export XFCE_WSL_GPU=software; shift;;
+  --status) exec /usr/bin/python3 "$TOOLKIT_ROOT/lib/present.py" --status;;
+  *) echo "Opcao invalida: $1" >&2; exit 2;;
+ esac
+done
+[[ $XFCE_WSL_MONITOR == left || $XFCE_WSL_MONITOR == right ]] || { echo 'Monitor: left ou right' >&2; exit 2; }
+mkdir -p "$HOME/.local/state/xfce-wsl"
+if /usr/bin/python3 "$TOOLKIT_ROOT/lib/present.py" --check-running; then
+ exec /usr/bin/python3 "$TOOLKIT_ROOT/lib/present.py"
+fi
+if (( ! locked )); then
+ exec flock -n -E 75 -o "$XDG_RUNTIME_DIR/xfce-wsl.lock" "$0" --locked
+fi
+[[ -S /mnt/wslg/.X11-unix/X0 ]] || { echo 'WSLg indisponivel'; exit 1; }
+unset DBUS_SESSION_BUS_ADDRESS SESSION_MANAGER WAYLAND_DISPLAY LIBGL_ALWAYS_SOFTWARE LIBGL_ALWAYS_INDIRECT GALLIUM_DRIVER MESA_D3D12_DEFAULT_ADAPTER_NAME
+export DISPLAY=:0
+exec bwrap --bind / / --dev-bind /dev /dev --tmpfs /tmp/.X11-unix --chmod 1777 /tmp/.X11-unix --ro-bind /mnt/wslg/.X11-unix/X0 /tmp/.X11-unix/X0 -- dbus-run-session -- /usr/bin/python3 "$TOOLKIT_ROOT/lib/session.py" >>"$HOME/.local/state/xfce-wsl/session.log" 2>&1

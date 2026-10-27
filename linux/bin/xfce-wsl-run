@@ -1,0 +1,7 @@
+#!/usr/bin/python3
+import json,os,sys
+from pathlib import Path
+r=json.loads((Path.home()/'.local/state/xfce-wsl/session.json').read_text())
+os.kill(r['supervisor_pid'],0)
+os.environ.update(r['env'])
+os.execvp(sys.argv[1],sys.argv[1:])

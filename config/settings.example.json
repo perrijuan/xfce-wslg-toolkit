@@ -1,0 +1,8 @@
+{
+  "windows_helper_dir": "C:\\Users\\<usuario-windows>\\AppData\\Local\\XfceWSL",
+  "powershell_wsl": "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
+  "refresh_rate": 144,
+  "adapter": "auto",
+  "window_title": "Xfce WSL",
+  "windowed": true
+}
